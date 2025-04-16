@@ -1,3 +1,5 @@
+
+
 import argparse
 import os
 import numpy as np
@@ -8,6 +10,8 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import roc_curve, auc, accuracy_score
 from sklearn.preprocessing import StandardScaler
+import seaborn as sns
+from scipy import stats
 
 # Set random seed for reproducibility
 np.random.seed(3)
@@ -323,17 +327,155 @@ class MLFramework:
             plt.close()
         
         return self
+    
+    def compare_models(self, save_plot=True):
+        """Compare SVM with Naive Bayes"""
+        print("Comparing SVM with Naive Bayes...")
+        
+        # Results dictionaries
+        results = {'model': [], 'accuracy': [], 'auc': []}
+        
+        # Split data
+        if self.X_train is None or self.X_test is None:
+            self.split_data()
+        
+        # Train and evaluate SVM
+        svm_model = SVC(kernel='rbf', probability=True, random_state=3)
+        svm_model.fit(self.X_train, self.y_train)
+        
+        # Get SVM predictions
+        svm_y_pred = svm_model.predict(self.X_test)
+        svm_y_pred_prob = svm_model.predict_proba(self.X_test)[:, 1]
+        
+        # Calculate SVM metrics
+        svm_accuracy = accuracy_score(self.y_test, svm_y_pred)
+        svm_fpr, svm_tpr, _ = roc_curve(self.y_test, svm_y_pred_prob)
+        svm_auc = auc(svm_fpr, svm_tpr)
+        
+        # Store SVM results
+        results['model'].append('SVM')
+        results['accuracy'].append(svm_accuracy)
+        results['auc'].append(svm_auc)
+        
+        # Train and evaluate Naive Bayes
+        nb_model = GaussianNB()
+        nb_model.fit(self.X_train, self.y_train)
+        
+        # Get Naive Bayes predictions
+        nb_y_pred = nb_model.predict(self.X_test)
+        nb_y_pred_prob = nb_model.predict_proba(self.X_test)[:, 1]
+        
+        # Calculate Naive Bayes metrics
+        nb_accuracy = accuracy_score(self.y_test, nb_y_pred)
+        nb_fpr, nb_tpr, _ = roc_curve(self.y_test, nb_y_pred_prob)
+        nb_auc = auc(nb_fpr, nb_tpr)
+        
+        # Store Naive Bayes results
+        results['model'].append('Naive Bayes')
+        results['accuracy'].append(nb_accuracy)
+        results['auc'].append(nb_auc)
+        
+        # Print results
+        print("Model comparison results:")
+        print(f"SVM: Accuracy = {svm_accuracy:.4f}, AUC = {svm_auc:.4f}")
+        print(f"Naive Bayes: Accuracy = {nb_accuracy:.4f}, AUC = {nb_auc:.4f}")
+        
+        # Store comparison results
+        self.results['comparison'] = results
+        
+        # Plot ROC curves for both models if save_plot is True
+        if save_plot:
+            plt.figure(figsize=(10, 8))
+            plt.plot(svm_fpr, svm_tpr, 'b-', lw=2, label=f'SVM (AUC = {svm_auc:.4f})')
+            plt.plot(nb_fpr, nb_tpr, 'r-', lw=2, label=f'Naive Bayes (AUC = {nb_auc:.4f})')
+            plt.plot([0, 1], [0, 1], 'k--', lw=2)
+            plt.xlim([0.0, 1.0])
+            plt.ylim([0.0, 1.05])
+            plt.xlabel('False Positive Rate')
+            plt.ylabel('True Positive Rate')
+            plt.title(f'ROC Curves Comparison - {self.task_name} task')
+            plt.legend(loc="lower right")
+            plt.savefig(f'output/{self.task_name}_model_comparison.png')
+            
+            # Plot bar chart of accuracies and AUCs
+            plt.figure(figsize=(10, 6))
+            
+            x = np.arange(len(results['model']))
+            width = 0.35
+            
+            plt.bar(x - width/2, results['accuracy'], width, label='Accuracy')
+            plt.bar(x + width/2, results['auc'], width, label='AUC')
+            
+            plt.xlabel('Model')
+            plt.ylabel('Score')
+            plt.title(f'Model Performance Comparison - {self.task_name} task')
+            plt.xticks(x, results['model'])
+            plt.legend()
+            
+            plt.savefig(f'output/{self.task_name}_model_comparison_bar.png')
+            plt.close()
+        
+        return self
+    
+    def write_report(self):
+        """Generate a report of the results"""
+        print("Generating report...")
+        
+        report = f"# Machine Learning Report for {self.task_name.capitalize()} Task\n\n"
+        
+        # Add dataset information
+        report += "## Dataset Information\n\n"
+        report += f"- Number of samples: {self.X.shape[0]}\n"
+        report += f"- Number of features: {self.X.shape[1]}\n"
+        
+        # Add test results if available
+        if 'test' in self.results:
+            report += "\n## Test Set Results\n\n"
+            report += f"- Accuracy: {self.results['test']['accuracy']:.4f}\n"
+            report += f"- AUC: {self.results['test']['auc']:.4f}\n"
+        
+        # Add cross-validation results if available
+        if 'cv' in self.results:
+            report += f"\n## {self.n_folds}-fold Cross-Validation Results\n\n"
+            report += f"- Mean Accuracy: {self.results['cv']['mean_accuracy']:.4f} ± {self.results['cv']['std_accuracy']:.4f}\n"
+            report += f"- Mean AUC: {self.results['cv']['mean_auc']:.4f} ± {self.results['cv']['std_auc']:.4f}\n"
+        
+        # Add model comparison results if available
+        if 'comparison' in self.results:
+            report += "\n## Model Comparison Results\n\n"
+            for i, model in enumerate(self.results['comparison']['model']):
+                report += f"### {model}\n\n"
+                report += f"- Accuracy: {self.results['comparison']['accuracy'][i]:.4f}\n"
+                report += f"- AUC: {self.results['comparison']['auc'][i]:.4f}\n\n"
+        
+        # Add plots information
+        report += "\n## Generated Plots\n\n"
+        if 'test' in self.results:
+            report += f"- ROC curve for test set: output/{self.task_name}_roc_test.png\n"
+        if 'cv' in self.results:
+            report += f"- ROC curves for cross-validation: output/{self.task_name}_roc_cv.png\n"
+            report += f"- AUC boxplot for cross-validation: output/{self.task_name}_auc_boxplot.png\n"
+        if 'comparison' in self.results:
+            report += f"- Model comparison ROC curves: output/{self.task_name}_model_comparison.png\n"
+            report += f"- Model comparison bar chart: output/{self.task_name}_model_comparison_bar.png\n"
+        
+        # Write report to file
+        with open(f'output/{self.task_name}_report.md', 'w') as f:
+            f.write(report)
+        
+        print(f"Report saved to output/{self.task_name}_report.md")
+        return self
 
 
 def main():
     """Main function to run the ML framework"""
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(description='Machine Learning Framework with Model Training')
+    parser = argparse.ArgumentParser(description='Advanced Machine Learning Framework')
     parser.add_argument('task', type=str, choices=['spam', 'p53', 'iris', 'custom'],
                         help='ML task: spam, p53, iris, or custom')
     parser.add_argument('--data', type=str, help='Path to dataset file (required for p53 and custom tasks)')
-    parser.add_argument('--model', type=str, choices=['svm', 'naive_bayes'], default='svm',
-                        help='Model type: svm or naive_bayes (default: svm)')
+    parser.add_argument('--model', type=str, choices=['svm', 'naive_bayes', 'both'], default='svm',
+                        help='Model type: svm, naive_bayes, or both (default: svm)')
     parser.add_argument('--kernel', type=str, choices=['linear', 'poly', 'rbf', 'sigmoid'], default='rbf',
                         help='Kernel for SVM (default: rbf)')
     parser.add_argument('--test-size', type=float, default=0.2,
@@ -363,19 +505,25 @@ def main():
     # Split data
     ml.split_data()
     
-    # Train and evaluate model
-    if args.model == 'svm':
+    # Train and evaluate model(s)
+    if args.model in ['svm', 'both']:
         ml.train_svm(kernel=args.kernel)
-    else:  # naive_bayes
+        ml.evaluate_model(save_plot=not args.no_plots)
+        if not args.no_cv:
+            ml.cross_validate(model_type='svm', kernel=args.kernel, save_plot=not args.no_plots)
+    
+    if args.model in ['naive_bayes', 'both']:
         ml.train_naive_bayes()
+        ml.evaluate_model(save_plot=not args.no_plots)
+        if not args.no_cv:
+            ml.cross_validate(model_type='naive_bayes', save_plot=not args.no_plots)
     
-    ml.evaluate_model(save_plot=not args.no_plots)
+    # Compare models if both are selected
+    if args.model == 'both':
+        ml.compare_models(save_plot=not args.no_plots)
     
-    # Perform cross-validation if not skipped
-    if not args.no_cv:
-        ml.cross_validate(model_type=args.model, kernel=args.kernel, save_plot=not args.no_plots)
-    
-    print("Model training and evaluation complete.")
+    # Generate report
+    ml.write_report()
 
 
 if __name__ == '__main__':
